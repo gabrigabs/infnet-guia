@@ -1,0 +1,127 @@
+--- #grafana
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      containers:
+        - name: grafana
+          image: grafana/grafana:latest
+          ports:
+            - containerPort: 3000
+          resources:
+            requests:
+              memory: '128Mi'
+              cpu: '250m'
+            limits:
+              memory: '256Mi'
+              cpu: '500m'
+          volumeMounts:
+            - name: grafana-storage
+              mountPath: /var/lib/grafana
+      volumes:
+        - name: grafana-storage
+          emptyDir: {}
+--- #grafana service
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana-svc
+spec:
+  type: LoadBalancer
+  selector:
+    app: grafana
+  ports:
+    - port: 3000
+      targetPort: 3000
+      nodePort: 30001
+
+--- #prometheus
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prometheus
+  template:
+    metadata:
+      labels:
+        app: prometheus
+    spec:
+      containers:
+        - name: prometheus
+          image: prom/prometheus
+          args:
+            - '--config.file=/etc/prometheus/prometheus.yml'
+            - '--storage.tsdb.path=/prometheus'
+          ports:
+            - containerPort: 9090
+          resources:
+            requests:
+              memory: '128Mi'
+              cpu: '250m'
+            limits:
+              memory: '256Mi'
+              cpu: '500m'
+          volumeMounts:
+            - name: prometheus-storage
+              mountPath: /prometheus
+            - name: prometheus-config
+              mountPath: /etc/prometheus
+      volumes:
+        - name: prometheus-storage
+          persistentVolumeClaim:
+            claimName: prometheus-pvc
+        - name: prometheus-config
+          configMap:
+            name: prometheus-config
+--- #prometheus service
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+spec:
+  selector:
+    app: prometheus
+  ports:
+    - port: 9090
+      targetPort: 9090
+  type: LoadBalancer
+--- # ConfigMap for Prometheus configurations
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+    scrape_configs:
+      - job_name: 'infnet-guia-app'
+        metrics_path: /api/metrics
+        static_configs:
+          - targets: ['infnet-guia-service.default.svc.cluster.local:80']
+
+--- # PersistentVolume for Prometheus
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: prometheus-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi

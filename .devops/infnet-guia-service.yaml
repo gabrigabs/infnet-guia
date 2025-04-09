@@ -8,5 +8,6 @@ spec:
     app: infnet-guia
   ports:
     - protocol: TCP
+      name: web
       port: 80
       targetPort: 3000
